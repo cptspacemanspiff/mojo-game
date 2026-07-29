@@ -1,0 +1,96 @@
+"""GroovyDSP: a CPU DSP library in Mojo, exposed to C/C++ as a shared library."""
+
+module(
+    name = "mojo-game",
+    version = "0",
+)
+
+# Hedron's Compile Commands Extractor for Bazel
+# https://github.com/hedronvision/bazel-compile-commands-extractor
+# using fork for bazel 9 compatibility (https://github.com/helly25/bazel-compile-commands-extractor.git)
+bazel_dep(name = "hedron_compile_commands", dev_dependency = True)
+git_override(
+    module_name = "hedron_compile_commands",
+    remote = "https://github.com/helly25/bazel-compile-commands-extractor.git",
+    commit = "c7681f020b2b7a22797f29982f18b82fbcaae039",
+)
+
+# The Mojo build rules. Sourced from our vendored submodule (third_party/rules_mojo,
+# pinned to the same commit the modular submodule uses) so we can patch the rules
+# -- e.g. add a mojo_static_library rule. local_path_override REPLACES the pinned
+# archive; Bazel allows only one override per module, and only the root module's
+# override takes effect, so modular's own archive_override is ignored.
+bazel_dep(name = "rules_mojo", version = "0.6.0")
+# local_path_override(
+#     module_name = "rules_mojo",
+#     path = "third_party/rules_mojo",
+# )
+
+# Needed for //cshim/ncurses, the C shim Mojo calls into. NOTE the direction is the
+# opposite of GroovyDSP's, which this file was copied from: there, C consumed a
+# Mojo .so; here, Mojo consumes a cc_library. mojo_binary's `deps` takes [CcInfo],
+# so //src/game depends on //cshim/ncurses directly.
+bazel_dep(name = "rules_cc", version = "0.2.18")
+
+# --- ncurses, via the pixi environment ---------------------------------------
+# Exposes .pixi/envs/default as a Bazel repo so //cshim/ncurses can depend on the
+# env's wide ncurses as a normal cc_library target instead of smuggling absolute
+# paths through linkopts. pixi.lock is the version pin; the overlay BUILD file
+# next to the shim says which artifacts get picked up and why.
+#
+# The path is workspace-relative, which requires `.pixi` in .bazelignore -- else
+# Bazel tries to read the env tree as packages of the main repo.
+new_local_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:local.bzl", "new_local_repository")
+
+new_local_repository(
+    name = "pixi_env",
+    build_file = "//cshim/ncurses:pixi_env.BUILD",
+    path = ".pixi/envs/default",
+)
+
+# Test + microbenchmark frameworks for the C/C++ side. Both are dev_dependency:
+# they are consumed only by //benchmark and //test targets in THIS repo and must
+# never end up in the dependency closure of the shipped library (//capi).
+#
+# GoogleTest backs the cross-backend conformance test (//benchmark/fft:fft_test),
+# which is parameterized over backends() x length so each backend/length pair is
+# its own named case. Google Benchmark backs //benchmark/fft:fft_benchmark, which
+# times the same plans through the same public API.
+bazel_dep(name = "googletest", version = "1.17.0.bcr.2", dev_dependency = True)
+bazel_dep(name = "google_benchmark", version = "1.9.5", dev_dependency = True)
+
+# The foreign build driver for the two baselines above: configure_make for FFTW's
+# autotools, cmake for AOCL-FFTZ. Uses the host make/cmake/toolchain by default;
+# the FFTW tarball ships a prebuilt ./configure, so no autoconf regeneration is
+# needed.
+#
+# 0.15.1 rather than 0.14.0 for the CMake it ships: AOCL-FFTZ's CMakeLists sets
+# cmake_minimum_required(3.26), and 0.14.0's prebuilt toolchain is 3.23.2. The
+# version cannot be overridden from here -- rules_foreign_cc's `tools` extension
+# reads its cmake tag only from NON-root modules -- so the toolchain version is
+# whatever the module default is, and 0.15.1's is 3.31.8.
+bazel_dep(name = "rules_foreign_cc", version = "0.15.1")
+
+# sh_binary/sh_test (native shell rules were removed from Bazel core). Used by
+# //tools for the Mojo version consistency check between MODULE.bazel and pixi.toml.
+bazel_dep(name = "rules_shell", version = "0.6.1")
+
+mojo = use_extension("@rules_mojo//mojo:extensions.bzl", "mojo")
+mojo.toolchain(
+    version = "1.0.0b2",
+    use_prebuilt_packages = True,
+)
+use_repo(mojo, "mojo_toolchains")
+
+register_toolchains("@mojo_toolchains//...")
+
+mojo_pkg = use_extension("@rules_mojo//mojo:conda_lock.bzl", "mojo_pkg")
+mojo_pkg.from_lock(
+    hub = "max_hub",
+    lock = "//:pixi.lock",
+    only = ["max-core"],
+)
+use_repo(mojo_pkg, "max_hub")
+
+pixi = use_extension("@rules_mojo//mojo:pixi.bzl", "pixi")
+use_repo(pixi, "pixi")

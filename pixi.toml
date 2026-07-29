@@ -1,0 +1,17 @@
+[workspace]
+authors = ["Nicholas Long <19273992+cptspacemanspiff@users.noreply.github.com>"]
+channels = ["https://conda.modular.com/max", "conda-forge"]
+name = "mojo-game"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+# Link the env's ncursesw/tinfow by full path. Using `-lncursesw` instead would
+# pick up /usr/lib64/libncursesw.so, a linker script that pulls in the NARROW
+# libtinfo; mixing it with the wide libncursesw segfaults inside initscr().
+build = "mojo build src/game.mojo -o game -Xlinker $CONDA_PREFIX/lib/libncursesw.so.6 -Xlinker $CONDA_PREFIX/lib/libtinfow.so.6"
+game = { cmd = "./game", depends-on = ["build"] }
+
+[dependencies]
+mojo = ">=1.0.0b2,<2"
+ncurses = "*"

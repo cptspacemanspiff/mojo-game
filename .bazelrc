@@ -1,0 +1,35 @@
+# Avoid PATH leaking into actions (matches modular's build hygiene).
+common --incompatible_strict_action_env
+
+# Don't fail on unknown GPUs; this is a CPU-only DSP library.
+common --repo_env=MOJO_IGNORE_UNKNOWN_GPUS=1
+
+# DSP wants optimized codegen, not modular's default -c dbg.
+build --compilation_mode=opt
+
+# Build everything position-independent, so the ONE object per source is the PIC
+# one. Two reasons, both about //capi:groovydsp_static -- the shippable archive:
+#
+#  * A DSP library gets linked INTO other people's shared objects (an audio plugin
+#    is a .so). A non-PIC archive can't go there; this one can, verified by
+#    //capi:shared_link_test.
+#  * cc_library otherwise compiles each source BOTH ways, and cc_static_library
+#    bundles dispatch.o *and* dispatch.pic.o -- same symbols twice, which its
+#    validator rejects. Forcing PIC means one object per source and no collision.
+#
+# This leans on mojo_static_library declaring its object in the PIC slot (see the
+# patch in third_party/rules_mojo/.../mojo_binary_test.bzl); mojo emits
+# position-independent code, so the same .o serves both roles.
+build --force_pic
+
+# The shared benchmark FFT API (//benchmark/fft) is built on std::span and
+# concepts, so C++20 is a floor, not a preference. GCC still defaults to
+# gnu++17. C sources are unaffected -- cxxopt only reaches C++ compiles.
+build --cxxopt=-std=c++20
+build --host_cxxopt=-std=c++20
+
+# Local cache so repeated builds are fast.
+build --disk_cache=~/.cache/bazel-disk-cache
+
+# Check for a local gitignored bazel config; import last so it can override.
+try-import %workspace%/local.bazelrc

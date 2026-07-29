@@ -1,0 +1,47 @@
+load("@rules_cc//cc:cc_library.bzl", "cc_library")
+
+# The C shim between Mojo and ncurses.
+#
+# WHY THIS PACKAGE EXISTS: most of ncurses' public surface is preprocessor macros
+# and global variables, not linkable symbols. `getch()` is `#define getch()
+# wgetch(stdscr)`; `stdscr`, `COLS` and `LINES` are variables; `COLOR_PAIR()` is
+# arithmetic in a macro. Mojo's `external_call` can only bind names that exist in
+# the ELF dynamic symbol table, so everything macro-shaped needs a real function
+# body before Mojo can reach it. That is this package's entire job.
+#
+# Keep it mechanical: one thin function per macro or global, no game logic and no
+# policy. The rule of thumb is that ncurses_shim.h should read as a list of things
+# ncurses declined to make into functions -- if a call is already a real symbol
+# (initscr, endwin, cbreak, noecho, wrefresh, wgetch, waddnstr), it does NOT
+# belong here; bind it straight from Mojo. //third_party/ncurses is the reference
+# for deciding which is which: include/curses.h.in is the authority on what is a
+# macro, and it is more reliable than the man pages.
+#
+# It lives under //cshim rather than //src because the dependency runs C -> Mojo:
+# this is an INPUT the Mojo code consumes, not an API the project publishes. (In
+# GroovyDSP, which this build was seeded from, //capi is the mirror image -- Mojo
+# compiled down to a C ABI for outside callers. Same two languages, opposite
+# direction, so reusing that name here would read backwards.)
+
+package(default_visibility = ["//visibility:private"])
+
+# The overlay BUILD file for @pixi_env. It lives here rather than in //third_party
+# because .bazelignore excludes that tree, and because keeping it next to its only
+# consumer means everything about "how we acquire ncurses" is one directory.
+exports_files(["pixi_env.BUILD"])
+
+cc_library(
+    name = "ncurses",
+    srcs = ["ncurses_shim.c"],
+    hdrs = ["ncurses_shim.h"],
+    # Consumers write `#include "ncurses_shim.h"`. Only the C side cares -- Mojo
+    # binds symbols, not headers -- but a C test or a second shim would want it.
+    # The header keeps the _shim suffix even though the directory already says
+    # ncurses, so the include line stays unambiguous from anywhere in the repo.
+    includes = ["."],
+    visibility = ["//visibility:public"],
+    # mojo_binary's `deps` accepts [CcInfo] and merges each dep's linking context
+    # into the final link, so //src/game can depend on //cshim/ncurses directly
+    # and ncursesw rides along transitively. Nothing needs to restate the dep.
+    deps = ["@pixi_env//:ncursesw"],
+)
