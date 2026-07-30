@@ -186,11 +186,42 @@ struct GameState:
 
 
 struct TextBox(Movable):
+    var p_win: ArcPointer[Window]
     # render text inside a rectangle -
     var text: List[String]
+    var rev: Bool
 
-    def __init__(out self, initial_text: List[String]):
-        self.text = initial_text
+    def __init__(
+        out self, p_window: ArcPointer[Window], initial_text: List[String], rev : Bool
+    ):
+        self.p_win = p_window
+        self.text = initial_text.copy()
+        self.rev = rev
+
+    def render_in_rect(self, rect: Rect, hmargin: Int = 0, wmargin: Int = 3):
+        # We write text w/ each str on new line:
+        var max_line_len = rect.width - 2 * wmargin
+        var max_lines = rect.height - 2 * hmargin
+
+        var row_start = rect.row + hmargin
+        var col_start = rect.col + wmargin
+
+        def write(i: Int, string : String){self, row_start, col_start, max_line_len,max_lines}:
+            if i > max_lines - 2:
+                return
+
+            self.p_win[].move_cursor(row_start + i, col_start)
+            self.p_win[].write_string(string, max_line_len)
+
+        if self.rev:
+            for i, string in enumerate(reversed(self.text)):
+                write(i,string)
+        else:
+            for i, string in enumerate(self.text):
+                write(i,string)
+
+    def append_msg(mut self, msg: String) -> None:
+        self.text.append(msg)
 
 
 struct GameRenderer(Movable):
@@ -201,32 +232,73 @@ struct GameRenderer(Movable):
 
     var window_rect: Rect
 
+    var instruction_rect: Rect
+    var log_rect: Rect
+
     def __init__(out self, p_window: ArcPointer[Window]):
         # Construct a window, to create a terminal to render in.
         self.p_win = p_window
         self.state_map = Dict[Coordinate, Coordinate]()
         self.window_rect = self.p_win[].update_window_shape()
+        (self.instruction_rect, self.log_rect) = self.update_sub_rects(
+            self.window_rect
+        )
 
     def clear(mut self):
         self.p_win[].clear()
 
     def update_window_rect(mut self):
         self.window_rect = self.p_win[].update_window_shape()
+        (self.instruction_rect, self.log_rect) = self.update_sub_rects(
+            self.window_rect
+        )
 
-    def get_left_rect(self, input_rect: Rect) -> Rect:
+    @staticmethod
+    def get_left_rect(input_rect: Rect) -> Rect:
         var w_l = input_rect.width // 2
         return Rect(input_rect.row, input_rect.col, w_l, input_rect.height)
 
-    def get_right_rect(self, input_rect: Rect) -> Rect:
+    @staticmethod
+    def get_right_rect(input_rect: Rect) -> Rect:
         var w_l = input_rect.width // 2
         return Rect(
             input_rect.row, input_rect.col + w_l + 1, w_l, input_rect.height
+        )
+
+    def get_instruction_rect(self) -> Rect:
+        return self.instruction_rect
+
+    def get_log_rect(self) -> Rect:
+        return self.log_rect
+
+    @staticmethod
+    def update_sub_rects(window_rect: Rect) -> Tuple[Rect, Rect]:
+        var right_rect_advancing = GameRenderer.get_right_rect(window_rect)
+        var instruction_rect = GameRenderer.get_hsplit_rect(
+            right_rect_advancing, 7, 1
+        )
+        var advance_incr = instruction_rect.height  # (1 margin)
+        right_rect_advancing.row = right_rect_advancing.row + advance_incr
+        right_rect_advancing.height = right_rect_advancing.height - advance_incr
+        # Log rect is window rect height - instruction rect height -
+        var log_rect = right_rect_advancing
+
+        return (instruction_rect, log_rect)
+
+    @staticmethod
+    def get_hsplit_rect(input_rect: Rect, num_rows: Int, voffset: Int) -> Rect:
+        return Rect(
+            input_rect.row + voffset, input_rect.col, input_rect.width, num_rows
         )
 
     def draw_term_rect(mut self):
         self.p_win[].draw_rect_border(self.window_rect)
         self.p_win[].draw_rect_border(self.get_left_rect(self.window_rect))
         self.p_win[].draw_rect_border(self.get_right_rect(self.window_rect))
+
+        # instruction_box:
+        # self.p_win[].draw_rect_border(self.get_hsplit_rect(self.get_right_rect(self.window_rect),3,1))
+        # self.p_win[].draw_rect_border(self.get_hsplit_rect(self.get_right_rect(self.window_rect),10,5))
 
     def draw_board_rect(mut self):
         # create a centered game board rectangle:
@@ -356,20 +428,45 @@ def main() -> None:
 
     win_ptr = ArcPointer[Window](Window())
     renderer = GameRenderer(win_ptr)
+
+    instructions = ArcPointer[TextBox](
+        TextBox(
+            win_ptr,
+            [
+                "Play Tic-Tac-Toe! 🌊",
+                "Use w,a,s,d to move, and space to play.",
+                "use q to quit",
+                "---------",
+                "Logs:",
+            ],
+            False,
+        )
+    )
+    log = ArcPointer[TextBox](TextBox(win_ptr, ["Messages go here..."], True))
+
     renderer.draw_term_rect()
     renderer.draw_board_rect()
-    renderer.draw_game_state(game_state)
+
+    # render instructions:
+    instructions[].render_in_rect(renderer.get_instruction_rect())
+    # render log:
+    log[].render_in_rect(renderer.get_log_rect())
 
     input_processor = InputProcessor(win_ptr)
+
+    renderer.draw_game_state(game_state)
 
     while True:
         # blocking input
         var inval = InputEvent(renderer.p_win[].wait_for_input())
+        log[].append_msg("key pressed")
         if inval == InputEvent.KEY_RESIZE:
             renderer.update_window_rect()
             renderer.clear()
             renderer.draw_term_rect()
             renderer.draw_board_rect()
+            instructions[].render_in_rect(renderer.get_instruction_rect())
+            log[].render_in_rect(renderer.get_log_rect())
             renderer.draw_game_state(game_state)
 
         elif inval == InputEvent.KEY_Q_LOWER or inval == InputEvent.KEY_Q_UPPER:
@@ -377,6 +474,7 @@ def main() -> None:
 
         else:
             input_processor.handle_input(inval, game_state)
+            log[].render_in_rect(renderer.get_log_rect())
             renderer.draw_game_state(game_state)
 
 

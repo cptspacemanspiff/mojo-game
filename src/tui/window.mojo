@@ -72,9 +72,9 @@ struct Window(Movable):
         except e:
             print(e)
 
-    def write_string(self, text: String):
+    def write_string(self, text: String, max_len: Int = 0):
         try:
-            ffi.waddnwstr(self._win, text)
+            ffi.waddnwstr(self._win, text, max_len)
         except e:
             print(e)
 

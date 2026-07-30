@@ -211,9 +211,11 @@ def wmove(win: NCurseWindow, row: Int, column: Int) raises -> None:
 # A wchar is a int - this is a unicode codepoint:
 
 
-def waddnwstr(win: NCurseWindow, text: String) raises -> None:
+def waddnwstr(win: NCurseWindow, text: String, max_len: Int = 0) raises -> None:
     var utf32_array: List[UInt32] = [cp.to_u32() for cp in text.codepoints()]
     var length: Int = len(utf32_array)
+    if max_len != 0 and max_len < length:
+        length = max_len
     if not _Result(
         external_call["waddnwstr", c_int](
             win._ptr, utf32_array.unsafe_ptr(), c_int(length)
