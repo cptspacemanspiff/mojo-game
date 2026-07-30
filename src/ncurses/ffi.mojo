@@ -151,9 +151,11 @@ def wrefresh(win: NCurseWindow) raises -> None:
     if not _Result(external_call["wrefresh", c_int](win._ptr)):
         raise Error("ncurses waddnstr() failed")
 
+
 def wclear(win: NCurseWindow) raises -> None:
     if not _Result(external_call["wclear", c_int](win._ptr)):
         raise Error("ncurses wclear() failed")
+
 
 def wgetch(win: NCurseWindow) -> Int:
     return Int(external_call["wgetch", c_int](win._ptr))

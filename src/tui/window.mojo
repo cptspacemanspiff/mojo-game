@@ -66,7 +66,7 @@ struct Window(Movable):
         ffi.wtimeout(self._win, originalDelay)
         return val
 
-    def clear(self) :
+    def clear(self):
         try:
             ffi.wclear(self._win)
         except e:
