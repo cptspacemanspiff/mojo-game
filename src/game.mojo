@@ -59,6 +59,48 @@ struct Coordinate(Equatable, Hashable, ImplicitlyCopyable, Writable):
     def write_repr_to(self, mut writer: Some[Writer]):
         writer.write(t"Coor(row:{self.row}, col:{self.col})")
 
+struct TextBox(Movable):
+    var p_win: ArcPointer[Window]
+    # render text inside a rectangle -
+    var text: List[String]
+    var rev: Bool
+
+    def __init__(
+        out self, p_window: ArcPointer[Window], initial_text: List[String], rev : Bool
+    ):
+        self.p_win = p_window
+        self.text = initial_text.copy()
+        self.rev = rev
+
+    def render_in_rect(self, rect: Rect, hmargin: Int = 0, wmargin: Int = 3):
+        # We write text w/ each str on new line:
+        var max_line_len = rect.width - 2 * wmargin
+        var max_lines = rect.height - 2 * hmargin
+
+        var row_start = rect.row + hmargin
+        var col_start = rect.col + wmargin
+
+        def write(i: Int, string : String){self, row_start, col_start, max_line_len,max_lines}:
+            if i > max_lines - 2:
+                return
+            # clear the old line
+            self.p_win[].move_cursor(row_start + i, col_start)
+            self.p_win[].write_string(" "*max_line_len, max_line_len)
+            
+            # write the new one
+            self.p_win[].move_cursor(row_start + i, col_start)
+            self.p_win[].write_string(string, max_line_len)
+
+        if self.rev:
+            for i, string in enumerate(reversed(self.text)):
+                write(i,string)
+        else:
+            for i, string in enumerate(self.text):
+                write(i,string)
+
+    def append_msg(mut self, msg: String) -> None:
+        self.text.append(msg)
+
 
 struct GameState:
     # Row major:
@@ -68,7 +110,12 @@ struct GameState:
 
     var players: List[Player]
 
-    def __init__(out self):
+    var p_log : ArcPointer[TextBox]
+
+    var complete : Bool
+
+    def __init__(out self, p_log : ArcPointer[TextBox]):
+        self.p_log = p_log
         self.game_board = [
             [CellState.Free, CellState.Free, CellState.Free],
             [CellState.Free, CellState.Free, CellState.Free],
@@ -80,12 +127,38 @@ struct GameState:
             Player(Codepoint.ord("X"), 1),
             Player(Codepoint.ord("O"), 2),
         ]
+        self.complete = False
+        ref next_player = self.players[self.current_player_idx]
+        var char = String(next_player.glyph)
+        self.p_log[].append_msg(String(t"Player {next_player.id} is next, w/ {char}"))
 
     def get_cursor_cell(self) -> Coordinate:
         return self.cursor_cell
 
     def advance_turn(mut self):
+        # Check if current player won?
+        var current_player = self.players[self.current_player_idx]
+        if self.check_win(current_player):
+            # reversed for the reverse log
+            self.p_log[].append_msg(String(t"-----------------------"))
+            self.p_log[].append_msg(String(t"Press space to reset!"))
+            self.p_log[].append_msg(String(t"Player {current_player.id} won!, w/ {current_player.glyph}"))
+            self.p_log[].append_msg(String(t"-----------------------"))
+            self.complete = True
+            return
+        
+        if self.check_complete():
+            # reversed for the reverse log:
+            self.p_log[].append_msg(String(t"Press space to reset!"))
+            self.p_log[].append_msg(String(t"It was a Tie..."))
+            self.complete = True
+            return
+
+        # advance turns:
         self.current_player_idx = (self.current_player_idx + 1) % 2
+        ref next_player = self.players[self.current_player_idx]
+        var char = String(next_player.glyph)
+        self.p_log[].append_msg(String(t"Player {next_player.id} is next, w/ {char}"))
 
     def get_cell_codepoint(self, coordinate: Coordinate) -> Codepoint:
         var cell = self.game_board[coordinate.row][coordinate.col]
@@ -96,6 +169,11 @@ struct GameState:
         return Codepoint.ord(" ")  # blank on free:
 
     def play(mut self, cell_coor: Coordinate) raises:
+        if self.complete:
+            self.reset()
+            raise Error("Game Finished")
+
+        
         ref state = self.game_board[cell_coor.row][cell_coor.col]
         if state != CellState.Free:
             raise Error("Cell already owned by a player")
@@ -156,6 +234,12 @@ struct GameState:
         for ref rows in self.game_board:
             for ref cell in rows:
                 cell = CellState.Free
+        self.cursor_cell = Coordinate(1, 1)  # start at the center:
+        self.current_player_idx = Int(random.random_si64(0, 1))
+        self.complete = False
+        # start:
+        self.p_log[].append_msg("Reset game board.")
+        self.advance_turn()
 
     def update_cursor(mut self, move: Movement) -> None:
         def bounded_change(idx: Int, change: Int) -> Int:
@@ -185,43 +269,7 @@ struct GameState:
         return None
 
 
-struct TextBox(Movable):
-    var p_win: ArcPointer[Window]
-    # render text inside a rectangle -
-    var text: List[String]
-    var rev: Bool
 
-    def __init__(
-        out self, p_window: ArcPointer[Window], initial_text: List[String], rev : Bool
-    ):
-        self.p_win = p_window
-        self.text = initial_text.copy()
-        self.rev = rev
-
-    def render_in_rect(self, rect: Rect, hmargin: Int = 0, wmargin: Int = 3):
-        # We write text w/ each str on new line:
-        var max_line_len = rect.width - 2 * wmargin
-        var max_lines = rect.height - 2 * hmargin
-
-        var row_start = rect.row + hmargin
-        var col_start = rect.col + wmargin
-
-        def write(i: Int, string : String){self, row_start, col_start, max_line_len,max_lines}:
-            if i > max_lines - 2:
-                return
-
-            self.p_win[].move_cursor(row_start + i, col_start)
-            self.p_win[].write_string(string, max_line_len)
-
-        if self.rev:
-            for i, string in enumerate(reversed(self.text)):
-                write(i,string)
-        else:
-            for i, string in enumerate(self.text):
-                write(i,string)
-
-    def append_msg(mut self, msg: String) -> None:
-        self.text.append(msg)
 
 
 struct GameRenderer(Movable):
@@ -424,8 +472,6 @@ struct InputProcessor:
 def main() -> None:
     print("Tic-Tac-Toe 🌊")
 
-    game_state = GameState()
-
     win_ptr = ArcPointer[Window](Window())
     renderer = GameRenderer(win_ptr)
 
@@ -444,6 +490,8 @@ def main() -> None:
     )
     log = ArcPointer[TextBox](TextBox(win_ptr, ["Messages go here..."], True))
 
+    game_state = GameState(log)
+
     renderer.draw_term_rect()
     renderer.draw_board_rect()
 
@@ -459,7 +507,7 @@ def main() -> None:
     while True:
         # blocking input
         var inval = InputEvent(renderer.p_win[].wait_for_input())
-        log[].append_msg("key pressed")
+        # log[].append_msg("key pressed")
         if inval == InputEvent.KEY_RESIZE:
             renderer.update_window_rect()
             renderer.clear()
