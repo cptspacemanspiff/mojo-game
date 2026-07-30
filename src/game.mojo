@@ -2,7 +2,7 @@ from tui.window import Window, Rect
 from tui.inputs import InputEvent
 
 
-from std.collections import List
+from std.collections import List, Dict
 from std.memory import ArcPointer
 
 
@@ -31,13 +31,27 @@ struct CellState(ImplicitlyCopyable, Movable):
             return True
         return False
 
+@fieldwise_init
+struct Coordinate(ImplicitlyCopyable, Movable):
+    var row: Int
+    var col: Int
+
+
 
 struct GameRenderer(Movable):
     var p_win: ArcPointer[Window]
 
+    # map the game coordinates to render coordinates:
+    var state_map: Dict[Coordinate,Coordinate]
+
     def __init__(out self, p_window: ArcPointer[Window]):
         # Construct a window, to create a terminal to render in.
         self.p_win = p_window
+        self.state_map = Dict[Coordinate,Coordinate]()
+
+    def clear(mut self):
+        self.p_win[].clear()
+
 
     def draw_term_rect(mut self):
         var window_rect = self.p_win[].update_window_shape()
@@ -53,6 +67,7 @@ struct GameRenderer(Movable):
         comptime board_width = cell_width * 3 + 4
         ## place the board in the horizontal center,
         ## and 4 lines from the top of the screen.
+        
 
         var game_board_outline = Rect(
             window_rect.center_row() - board_height // 2,
@@ -83,6 +98,31 @@ struct GameRenderer(Movable):
 
         except e:
             print(e)
+
+        
+
+        # Generate the Coordinate map:
+        var row_start = game_board_outline.row+(cell_height//2)+1 # middle of cell (floor+1) + 1 line border
+        var col_start = game_board_outline.col+(cell_width//2)+1
+        for row_idx in range(3):
+            var row_offset = (cell_height + 1)*row_idx # cell height+ 1 line border
+            for col_idx in range(3):
+                col_offset = (cell_width+1)*col_idx
+                # try:
+                #     self.p_win[].write_char(row_start+row_offset,col_start+col_offset,Codepoint.ord('A'))
+                # except:
+                #     pass
+
+                # position is offset from the main
+
+
+
+
+        # def place_cursor(cell):
+
+
+
+
 
         # self.p_win[].
 
@@ -149,15 +189,20 @@ struct GameState:
                     return False
         return True
 
+    def reset(mut self)->None:
+        for ref rows in self.game_board:
+            for ref cell in rows:
+                cell = CellState.Free
 
-struct InputProcessing:
+
+struct InputProcessor:
     var p_win: ArcPointer[Window]
 
     def __init__(out self, p_window: ArcPointer[Window]):
         # Construct a window, to create a terminal to render in.
         self.p_win = p_window
 
-    def handle_input(self):
+    def handle_input(self, input_event: InputEvent, game_state: GameState):
         pass
 
 
@@ -170,9 +215,20 @@ def main() -> None:
     renderer.draw_board_rect()
 
     while True:
+        # blocking input
         var inval = InputEvent(renderer.p_win[].wait_for_input())
         if inval == InputEvent.KEY_RESIZE:
+            renderer.clear()
             renderer.draw_term_rect()
             renderer.draw_board_rect()
+
         elif inval == InputEvent.KEY_Q_LOWER or inval == InputEvent.KEY_Q_UPPER:
             break
+
+        else:
+
+# add a grid map in the renderer mapping cell -> location so that we can give a cell address, and update a location.
+# Split left right halves of the terminal plane, right side has text ox with 2 lines - active player has a star next to them.
+# Left side has the board.
+# Movement updates cursor position, enter redraws board + advances play state.
+

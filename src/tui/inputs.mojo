@@ -11,13 +11,15 @@
 struct InputEvent(Equatable, ImplicitlyCopyable):
     var _value: Int
 
-    comptime KEY_DOWN = InputEvent(402)
-    comptime KEY_UP = InputEvent(403)
-    comptime KEY_LEFT = InputEvent(404)
-    comptime KEY_RIGHT = InputEvent(405)
+    # ncurses spells these as octal literals; keep the 0o prefix so the
+    # values stay readable against curses.h.
+    comptime KEY_DOWN = InputEvent(0o402)
+    comptime KEY_UP = InputEvent(0o403)
+    comptime KEY_LEFT = InputEvent(0o404)
+    comptime KEY_RIGHT = InputEvent(0o405)
 
-    comptime KEY_ENTER = InputEvent(527)
-    comptime KEY_RESIZE = InputEvent(632)
+    comptime KEY_ENTER = InputEvent(0o527)
+    comptime KEY_RESIZE = InputEvent(0o632)
 
     comptime KEY_Q_UPPER = InputEvent(ord("Q"))
     comptime KEY_Q_LOWER = InputEvent(ord("q"))

@@ -66,6 +66,12 @@ struct Window(Movable):
         ffi.wtimeout(self._win, originalDelay)
         return val
 
+    def clear(self) :
+        try:
+            ffi.wclear(self._win)
+        except e:
+            print(e)
+
     def write_string(self, text: String):
         try:
             ffi.waddnwstr(self._win, text)
