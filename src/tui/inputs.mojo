@@ -13,12 +13,19 @@ struct InputEvent(Equatable, ImplicitlyCopyable):
 
     # ncurses spells these as octal literals; keep the 0o prefix so the
     # values stay readable against curses.h.
-    comptime KEY_DOWN = InputEvent(0o402)
-    comptime KEY_UP = InputEvent(0o403)
-    comptime KEY_LEFT = InputEvent(0o404)
-    comptime KEY_RIGHT = InputEvent(0o405)
+    # comptime KEY_DOWN = InputEvent(0o402)
+    # comptime KEY_UP = InputEvent(0o403)
+    # comptime KEY_LEFT = InputEvent(0o404)
+    # comptime KEY_RIGHT = InputEvent(0o405)
 
-    comptime KEY_ENTER = InputEvent(0o527)
+    # wasd:
+
+    comptime KEY_DOWN = InputEvent(ord("s"))
+    comptime KEY_UP = InputEvent(ord("w"))
+    comptime KEY_LEFT = InputEvent(ord("a"))
+    comptime KEY_RIGHT = InputEvent(ord("d"))
+
+    comptime KEY_SPACE = InputEvent(ord(" "))
     comptime KEY_RESIZE = InputEvent(0o632)
 
     comptime KEY_Q_UPPER = InputEvent(ord("Q"))

@@ -78,6 +78,12 @@ struct Window(Movable):
         except e:
             print(e)
 
+    def move_cursor(self, row: Int, col: Int) -> None:
+        try:
+            ffi.wmove(self._win, row, col)
+        except e:
+            print(e)
+
     def write_char(self, row: Int, col: Int, glyph: Codepoint) raises -> None:
         ffi.wmove(self._win, row, col)
         ffi.waddnwstr(self._win, String(glyph))
