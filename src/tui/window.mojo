@@ -4,16 +4,22 @@ from ncurses import ffi
 @fieldwise_init
 struct Rect(ImplicitlyCopyable, Writable):
     var row: Int
-    var column: Int
+    var col: Int
     var width: Int
     var height: Int
 
     def write_repr_to(self, mut writer: Some[Writer]):
         writer.write(
-            t"Rect(row:{self.row}, coliumn:{self.column},"
+            t"Rect(row:{self.row}, coliumn:{self.col},"
             t" width:{self.width},"
             t" height:{self.height})"
         )
+
+    def center_col(self) -> Int:
+        return self.col + (self.width // 2)
+
+    def center_row(self) -> Int:
+        return self.row + (self.height // 2)
 
 
 struct Window(Movable):
@@ -22,8 +28,9 @@ struct Window(Movable):
 
     def __init__(out self):
         self._win = ffi.initscr()
-
+        comptime locale = ""
         try:
+            _ = ffi.setlocale(ffi.FLAG_LOCALE.ALL, locale.as_c_string_slice())
             ffi.cbreak()
             ffi.noecho()
         except e:
@@ -52,43 +59,73 @@ struct Window(Movable):
             print("Failed to de-init: " + e._error)
 
     # Forces a refresh of the display buffer
-    def wait_for_input(self):
+    def wait_for_input(self) -> Int:
         var originalDelay = ffi.wgetdelay(self._win)
         ffi.wtimeout(self._win, -1)  # wait forevever
-        _ = ffi.wgetch(self._win)
+        var val = ffi.wgetch(self._win)
         ffi.wtimeout(self._win, originalDelay)
+        return val
 
     def write_string(self, text: String):
         try:
-            var mut_text = String(text)
-            ffi.waddnstr(self._win, mut_text.as_c_string_slice())
+            ffi.waddnwstr(self._win, text)
         except e:
             print(e)
 
-    def draw_rect_border(self, rect: Rect):
+    def write_char(self, row: Int, col: Int, glyph: Codepoint) raises -> None:
+        ffi.wmove(self._win, row, col)
+        ffi.waddnwstr(self._win, String(glyph))
+
+    def write_hline(
+        mut self, row_start: Int, col_start: Int, length: Int, glyph: Codepoint
+    ) raises -> None:
+        for col in range(col_start, col_start + length):
+            self.write_char(row_start, col, glyph)
+            pass
+
+    def write_vline(
+        mut self, row_start: Int, col_start: Int, length: Int, glyph: Codepoint
+    ) raises -> None:
+        for row in range(row_start, row_start + length):
+            self.write_char(row, col_start, glyph)
+            pass
+
+    def draw_rect_border(mut self, rect: Rect):
         try:
-            ffi.whline(
-                self._win, rect.row, rect.column, rect.width, UInt(ord("-"))
-            )  # Htop
-
-            ffi.whline(
-                self._win,
-                rect.row + rect.height - 1,
-                rect.column,
-                rect.width,
-                UInt(ord("-")),
-            )  # H bottom
-
-            ffi.wvline(
-                self._win, rect.row, rect.column, rect.height, UInt(ord("|"))
+            # print(rect)
+            self.write_vline(
+                rect.row, rect.col, rect.height - 1, Codepoint.ord("│")
             )  # V Left bar
-
-            ffi.wvline(
-                self._win,
+            self.write_vline(
                 rect.row,
-                rect.column + rect.width - 1,
-                rect.height,
-                UInt(ord("|")),
+                rect.col + rect.width - 1,
+                rect.height - 1,
+                Codepoint.ord("│"),
             )  # V Right
+
+            self.write_hline(
+                rect.row, rect.col, rect.width - 1, Codepoint.ord("─")
+            )  # Htop
+            self.write_hline(
+                rect.row + rect.height - 1,
+                rect.col,
+                rect.width - 1,
+                Codepoint.ord("─"),
+            )  # Hbottom
+
+            # go over this and do the proper corner glyphs
+            self.write_char(rect.row, rect.col, Codepoint.ord("┌"))
+            self.write_char(
+                rect.row, rect.col + rect.width - 1, Codepoint.ord("┐")
+            )
+            self.write_char(
+                rect.row + rect.height - 1, rect.col, Codepoint.ord("└")
+            )
+            self.write_char(
+                rect.row + rect.height - 1,
+                rect.col + rect.width - 1,
+                Codepoint.ord("┘"),
+            )
+
         except e:
             print(e)

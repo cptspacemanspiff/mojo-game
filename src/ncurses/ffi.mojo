@@ -147,14 +147,6 @@ def keypad(win: NCurseWindow, enable: Bool) raises -> None:
         raise Error("ncurses keypad() failed")
 
 
-def waddnstr(win: NCurseWindow, text: CStringSlice) raises -> None:
-    var length: Int = len(text)
-    if not _Result(
-        external_call["waddnstr", c_int](win._ptr, text, c_int(length))
-    ):
-        raise Error("ncurses waddnstr() failed")
-
-
 def wrefresh(win: NCurseWindow) raises -> None:
     if not _Result(external_call["wrefresh", c_int](win._ptr)):
         raise Error("ncurses waddnstr() failed")
@@ -182,35 +174,46 @@ def wmove(win: NCurseWindow, row: Int, column: Int) raises -> None:
         raise Error("ncurses wmove() failed")
 
 
-def whline(
-    win: NCurseWindow, row: Int, column: Int, length: Int, character: UInt
-) raises -> None:
-    wmove(win, row, column)
+# lines do not accept unicode... 😦
+
+# def whline(
+#     win: NCurseWindow, row: Int, column: Int, length: Int, character: UInt
+# ) raises -> None:
+#     wmove(win, row, column)
+#     if not _Result(
+#         external_call["whline_set", c_int](
+#             win._ptr, c_uint(character), c_int(length)
+#         )
+#     ):
+#         raise Error("ncurses whline_set() failed")
+
+
+# def wvline(
+#     win: NCurseWindow, row: Int, column: Int, length: Int, character: UInt
+# ) raises -> None:
+#     wmove(win, row, column)
+#     if not _Result(
+#         external_call["wvline_set", c_int](
+#             win._ptr, c_uint(character), c_int(length)
+#         )
+#     ):
+#         raise Error("ncurses whline_set() failed")
+
+
+### Unicode.... Is wierd....
+
+# To render unicode we need a cchar which is a struct with formatting from a wchar
+# A wchar is a int - this is a unicode codepoint:
+
+
+def waddnwstr(win: NCurseWindow, text: String) raises -> None:
+    var utf32_array: List[UInt32] = [cp.to_u32() for cp in text.codepoints()]
+    var length: Int = len(utf32_array)
     if not _Result(
-        external_call["whline", c_int](
-            win._ptr, c_uint(character), c_int(length)
+        external_call["waddnwstr", c_int](
+            win._ptr, utf32_array.unsafe_ptr(), c_int(length)
         )
     ):
-        raise Error("ncurses whline() failed")
-
-
-def wvline(
-    win: NCurseWindow, row: Int, column: Int, length: Int, character: UInt
-) raises -> None:
-    wmove(win, row, column)
-    if not _Result(
-        external_call["wvline", c_int](
-            win._ptr, c_uint(character), c_int(length)
-        )
-    ):
-        raise Error("ncurses wvline() failed")
-
-
-def mvwaddch(
-    win: NCurseWindow, row: Int, column: Int, character: UInt
-) raises -> None:
-    wmove(win, row, column)
-    if not _Result(
-        external_call["mvwaddch", c_int](win._ptr, c_uint(character))
-    ):
-        raise Error("ncurses mvwaddch() failed")
+        # raise Error(t"ncurses waddnstr() failed: {text}, {utf32_array}, {length}, ")
+        pass  # This errors in the bottom right corner... which is annoying to detect so just ignore it.
+        # proper solution nees the wchar conversion to c_types

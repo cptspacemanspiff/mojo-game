@@ -3,6 +3,6 @@
         "/home/nlong/life/rc_app/mojo-game/src",
         // "/home/nlong/dev/GroovyDSP/third_party/modular/mojo/stdlib"
     ],
-    "mojo.lsp.removeModularHome": false,
-    "editor.defaultFormatter": "modular-mojotools.vscode-mojo"
+    "editor.defaultFormatter": "modular-mojotools.vscode-mojo",
+    "mojo.lsp.suppress.diagnostics.in.docstring": true
 }

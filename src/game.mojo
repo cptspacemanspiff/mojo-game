@@ -1,6 +1,9 @@
 from tui.window import Window, Rect
+from tui.inputs import InputEvent
+
 
 from std.collections import List
+from std.memory import ArcPointer
 
 
 @fieldwise_init
@@ -23,18 +26,65 @@ struct CellState(ImplicitlyCopyable, Movable):
     def __ne__(self, other: Self) -> Bool:
         return not (self == other)
 
-    def get_owned_by(self, player_id : Int) -> Bool:
+    def get_owned_by(self, player_id: Int) -> Bool:
         if self._value == player_id:
             return True
         return False
 
+
 struct GameRenderer(Movable):
-    var win : Window
+    var p_win: ArcPointer[Window]
 
-    def __init__(out self):
+    def __init__(out self, p_window: ArcPointer[Window]):
         # Construct a window, to create a terminal to render in.
-        win = Window()
+        self.p_win = p_window
 
+    def draw_term_rect(mut self):
+        var window_rect = self.p_win[].update_window_shape()
+        self.p_win[].draw_rect_border(window_rect)
+
+    def draw_board_rect(mut self):
+        # create a centered game board rectangle:
+        var window_rect = self.p_win[].update_window_shape()
+
+        comptime cell_height = 3
+        comptime cell_width = cell_height * 3
+        comptime board_height = cell_height * 3 + 4  # cells are 3x3, + 4 lines total 13
+        comptime board_width = cell_width * 3 + 4
+        ## place the board in the horizontal center,
+        ## and 4 lines from the top of the screen.
+
+        var game_board_outline = Rect(
+            window_rect.center_row() - board_height // 2,
+            window_rect.center_col() - board_width // 2,
+            board_width,
+            board_height,
+        )
+        self.p_win[].draw_rect_border(game_board_outline)
+
+        try:
+            # place horizontal lines on the board:
+            for i in range(2):
+                var row_offset = (cell_height + 1) * (i + 1)
+                self.p_win[].write_hline(
+                    game_board_outline.row + row_offset,
+                    game_board_outline.col + 1,
+                    board_width - 2,
+                    Codepoint.ord("-"),
+                )
+            for i in range(2):
+                var col_offset = (cell_width + 1) * (i + 1)
+                self.p_win[].write_vline(
+                    game_board_outline.row + 1,
+                    game_board_outline.col + col_offset,
+                    board_height - 2,
+                    Codepoint.ord("|"),
+                )
+
+        except e:
+            print(e)
+
+        # self.p_win[].
 
 
 struct GameState:
@@ -52,7 +102,6 @@ struct GameState:
             state = CellState.Player2
         else:
             raise Error("Unknown Player")
-
 
     def check_win(self, player: Player) -> Bool:
         comptime board_dim = 3
@@ -85,12 +134,12 @@ struct GameState:
 
         # diagonal up
         for index in range(board_dim):
-            ref cell = self.game_board[max_index-index][max_index-index]
+            ref cell = self.game_board[max_index - index][max_index - index]
             if cell.get_owned_by(player.id) == False:
                 break
             if index == max_index:
                 return True
-        
+
         return False
 
     def check_complete(self) -> Bool:
@@ -101,19 +150,29 @@ struct GameState:
         return True
 
 
+struct InputProcessing:
+    var p_win: ArcPointer[Window]
+
+    def __init__(out self, p_window: ArcPointer[Window]):
+        # Construct a window, to create a terminal to render in.
+        self.p_win = p_window
+
+    def handle_input(self):
+        pass
+
+
 def main() -> None:
-    print("hello world")
-    var w = Window()
-    w.write_string("game window\n")
-    w.wait_for_input()
-    w.write_string("game window2\n")
-    w.write_string(String(w.get_window_shape()))
-    w.wait_for_input()
+    print("Tic-Tac-Toe 🌊")
 
-    var term_rect = w.get_window_shape()
+    win_ptr = ArcPointer[Window](Window())
+    renderer = GameRenderer(win_ptr)
+    renderer.draw_term_rect()
+    renderer.draw_board_rect()
 
-    var sub_rect = Rect(7, 7, 4, 4)
-
-    w.draw_rect_border(term_rect)
-    w.draw_rect_border(sub_rect)
-    w.wait_for_input()
+    while True:
+        var inval = InputEvent(renderer.p_win[].wait_for_input())
+        if inval == InputEvent.KEY_RESIZE:
+            renderer.draw_term_rect()
+            renderer.draw_board_rect()
+        elif inval == InputEvent.KEY_Q_LOWER or inval == InputEvent.KEY_Q_UPPER:
+            break
