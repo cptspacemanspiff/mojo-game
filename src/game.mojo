@@ -138,7 +138,7 @@ struct GameState:
     def advance_turn(mut self):
         # Check if current player won?
         var current_player = self.players[self.current_player_idx]
-        if self.check_win(current_player):
+        if self.check_win(self.game_board, current_player):
             # reversed for the reverse log
             self.p_log[].append_msg(String(t"-----------------------"))
             self.p_log[].append_msg(String(t"Press space to reset!"))
@@ -147,7 +147,7 @@ struct GameState:
             self.complete = True
             return
         
-        if self.check_complete():
+        if self.check_complete(self.game_board):
             # reversed for the reverse log:
             self.p_log[].append_msg(String(t"Press space to reset!"))
             self.p_log[].append_msg(String(t"It was a Tie..."))
@@ -184,13 +184,14 @@ struct GameState:
         else:
             raise Error("Unknown Player")
 
-    def check_win(self, player: Player) -> Bool:
+    @staticmethod
+    def check_win(board: List[List[CellState]], player: Player) -> Bool:
         comptime board_dim = 3
         comptime max_index = board_dim - 1
         # Check rows for a winner:
         for row in range(board_dim):
             for col in range(board_dim):
-                ref cell = self.game_board[row][col]
+                ref cell = board[row][col]
                 if cell.get_owned_by(player.id) == False:
                     break
                 if col == max_index:
@@ -199,7 +200,7 @@ struct GameState:
         # Check columns for a winner:
         for col in range(board_dim):
             for row in range(board_dim):
-                ref cell = self.game_board[row][col]
+                ref cell = board[row][col]
                 if cell.get_owned_by(player.id) == False:
                     break
                 if row == max_index:
@@ -207,7 +208,7 @@ struct GameState:
 
         # Check down diagonal for a winner:
         for index in range(board_dim):
-            ref cell = self.game_board[index][index]
+            ref cell = board[index][index]
             if cell.get_owned_by(player.id) == False:
                 break
             if index == max_index:
@@ -215,7 +216,7 @@ struct GameState:
 
         # diagonal up
         for index in range(board_dim):
-            ref cell = self.game_board[max_index - index][max_index - index]
+            ref cell = board[max_index - index][index]
             if cell.get_owned_by(player.id) == False:
                 break
             if index == max_index:
@@ -223,8 +224,9 @@ struct GameState:
 
         return False
 
-    def check_complete(self) -> Bool:
-        for rows in self.game_board:
+    @staticmethod
+    def check_complete(board: List[List[CellState]]) -> Bool:
+        for rows in board:
             for cell in rows:
                 if cell == CellState.Free:
                     return False
@@ -437,9 +439,14 @@ struct GameRenderer(Movable):
             game_state.cursor_cell.row, game_state.cursor_cell.col
         )
 
+# struct AI():
+#     var test
+
 
 struct InputProcessor:
     var p_win: ArcPointer[Window]
+
+    # var ai
 
     def __init__(out self, p_window: ArcPointer[Window]):
         # Construct a window, to create a terminal to render in.
@@ -460,8 +467,22 @@ struct InputProcessor:
 
         if input_event == InputEvent.KEY_SPACE:
             try:
-                game_state.play(game_state.get_cursor_cell())
-                game_state.advance_turn()
+                if game_state.current_player_idx == 0:
+                    game_state.play(game_state.get_cursor_cell())
+                    game_state.advance_turn()
+                
+                if game_state.current_player_idx == 1:
+                    while True:
+                        try:
+                            var rand_row = Int(random.random_si64(0, 2))
+                            var rand_col = Int(random.random_si64(0, 2))
+
+                            game_state.play(Coordinate(rand_row, rand_col))
+                            game_state.advance_turn()
+                            break
+                        except e:
+                            pass
+
             except e:
                 # print("Invalid")
                 pass
